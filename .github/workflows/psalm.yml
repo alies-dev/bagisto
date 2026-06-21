@@ -1,0 +1,47 @@
+name: Psalm
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  psalm:
+    name: Psalm static analysis (types + taint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      # Psalm 7 runs type inference and taint (security) analysis in a single
+      # pass. One invocation emits inline annotations and a SARIF report.
+      - name: Run Psalm
+        run: >-
+          ./vendor/bin/psalm
+          --taint-analysis
+          --output-format=github
+          --report=psalm.sarif
+          --no-progress
+          --no-cache
+          --threads=2
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: psalm.sarif
+          category: psalm
