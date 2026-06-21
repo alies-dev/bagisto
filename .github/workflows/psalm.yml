@@ -58,7 +58,9 @@ jobs:
       - uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0
 
       - name: Run Psalm
-        run: ./vendor/bin/psalm --taint-analysis --report=psalm.sarif --threads=2
+        # --report-show-info=false keeps info-level issues out of the SARIF, so
+        # Code Scanning shows only error-level findings (not Note noise).
+        run: ./vendor/bin/psalm --taint-analysis --report=psalm.sarif --report-show-info=false
 
       - name: Upload SARIF to GitHub Code Scanning
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
