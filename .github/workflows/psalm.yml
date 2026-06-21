@@ -2,8 +2,7 @@ name: Psalm
 
 on:
   push:
-    # Maintained long-lived branches. Pushes here build the default-branch
-    # baseline that Code Scanning diffs pull requests against.
+    # Build the baseline Code Scanning diffs PRs against, on maintained branches.
     branches:
       - master
       - '2.*'
@@ -31,39 +30,19 @@ jobs:
         with:
           php-version: '8.4'
           coverage: none
-          tools: composer:v2
 
       - name: Install Composer dependencies
         run: composer install --no-interaction --no-progress --prefer-dist
 
-      # Psalm 7 runs type inference and taint (security) analysis in a single
-      # pass. One invocation emits inline annotations and a SARIF report.
-      #
-      # When taint analysis writes a report inside GitHub Actions, Psalm
-      # intentionally exits 0 instead of failing the job (see vimeo/psalm
-      # commit 6e39c24). Findings are surfaced through the SARIF upload below
-      # and gated via GitHub Code Scanning + branch protection, not the CI
-      # exit code.
+      # Type + taint analysis in one pass. In Actions, Psalm auto-selects the
+      # github output format and exits 0 even on findings when writing a report
+      # (vimeo/psalm@6e39c24), so results are gated via Code Scanning below.
       - name: Run Psalm
-        run: |
-          set +e
-          ./vendor/bin/psalm --taint-analysis --output-format=github --report=psalm.sarif --no-progress --no-cache --threads=2
-          code=$?
-          # Psalm suppresses its "issues found" exit code (2) when writing a
-          # report during taint analysis in GitHub Actions, so 0 and 2 both
-          # mean a clean run. Any other code is a crash or configuration error
-          # and must fail the job.
-          if [ "$code" -ne 0 ] && [ "$code" -ne 2 ]; then
-            echo "::error::Psalm exited with $code (crash or configuration error)"
-            exit "$code"
-          fi
+        run: ./vendor/bin/psalm --taint-analysis --report=psalm.sarif
 
+      # No `if: always()`: a crashed run fails the step above and skips this
+      # upload, so a partial or missing SARIF never resolves existing alerts.
       - name: Upload SARIF to GitHub Code Scanning
-        # success() is the crash guard: a crashed run fails the step above, so
-        # this is skipped and no stale or partial SARIF is uploaded (which
-        # would make Code Scanning resolve existing alerts). hashFiles() is
-        # extra insurance that a report was actually produced.
-        if: success() && hashFiles('psalm.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: psalm.sarif
