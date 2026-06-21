@@ -36,18 +36,25 @@ jobs:
       # and gated via GitHub Code Scanning + branch protection, not the CI
       # exit code.
       - name: Run Psalm
-        run: >-
-          ./vendor/bin/psalm
-          --taint-analysis
-          --output-format=github
-          --report=psalm.sarif
-          --no-progress
-          --no-cache
-          --threads=2
+        run: |
+          set +e
+          ./vendor/bin/psalm --taint-analysis --output-format=github --report=psalm.sarif --no-progress --no-cache --threads=2
+          code=$?
+          # Psalm suppresses its "issues found" exit code (2) when writing a
+          # report during taint analysis in GitHub Actions, so 0 and 2 both
+          # mean a clean run. Any other code is a crash or configuration error
+          # and must fail the job.
+          if [ "$code" -ne 0 ] && [ "$code" -ne 2 ]; then
+            echo "::error::Psalm exited with $code (crash or configuration error)"
+            exit "$code"
+          fi
 
       - name: Upload SARIF to GitHub Code Scanning
+        # Upload only after a clean run that actually produced a report. Never
+        # push a missing, empty, or partial SARIF: Code Scanning treats fewer
+        # results as "resolved" and would silently close existing alerts.
+        if: success() && hashFiles('psalm.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
         with:
           sarif_file: psalm.sarif
           category: psalm
