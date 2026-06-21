@@ -71,6 +71,6 @@ jobs:
           errors=$(jq '[.runs[].results[] | select(.level == "error")] | length' psalm.sarif)
           echo "Psalm error-level findings: $errors"
           if [ "$errors" -gt 0 ]; then
-            echo "::error::Psalm reported $errors error-level finding(s) - see annotations and the Security tab."
+            echo "::error::Psalm reported $errors error-level finding(s). See the inline annotations on the Files changed tab (maintainers: Security > Code scanning)."
             exit 1
           fi
