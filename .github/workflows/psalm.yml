@@ -1,8 +1,19 @@
+# Psalm static analysis.
+#
+# A single Psalm run (type + taint analysis) drives all three outcomes:
+#   * GitHub annotations - Psalm auto-selects the github format on stdout.
+#   * SARIF upload        - results go to the Security tab / Code Scanning.
+#   * Failing CI          - the build fails on any error-level finding.
+#
+# Psalm exits 0 even on findings when it writes a report inside GitHub Actions
+# (vimeo/psalm@6e39c24), so the build is failed from the SARIF after it has
+# been uploaded, not from the exit code. Upload first so findings are recorded
+# even on a failing run.
+
 name: Psalm
 
 on:
   push:
-    # Build the baseline Code Scanning diffs PRs against, on maintained branches.
     branches:
       - master
       - '2.*'
@@ -22,28 +33,46 @@ jobs:
     name: Psalm static analysis (types + taint)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Harden the runner (block unexpected egress)
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          # Derived from the egress-policy: audit run. Update when the toolchain
+          # gains a new outbound call (the audit run lists what was reached).
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            codeload.github.com:443
+            github.com:443
+            packagist.org:443
+            release-assets.githubusercontent.com:443
+            repo.packagist.org:443
+            results-receiver.actions.githubusercontent.com:443
 
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
         with:
           php-version: '8.4'
           coverage: none
 
-      - name: Install Composer dependencies
-        run: composer install --no-interaction --no-progress --prefer-dist
+      - uses: ramsey/composer-install@65e4f84970763564f46a70b8a54b90d033b3bdda # 4.0.0
 
-      # Type + taint analysis in one pass. In Actions, Psalm auto-selects the
-      # github output format and exits 0 even on findings when writing a report
-      # (vimeo/psalm@6e39c24), so results are gated via Code Scanning below.
       - name: Run Psalm
-        run: ./vendor/bin/psalm --taint-analysis --report=psalm.sarif
+        # --report-show-info=false keeps info-level issues out of the SARIF, so
+        # Code Scanning shows only error-level findings (not Note noise).
+        run: ./vendor/bin/psalm --taint-analysis --report=psalm.sarif --report-show-info=false
 
-      # No `if: always()`: a crashed run fails the step above and skips this
-      # upload, so a partial or missing SARIF never resolves existing alerts.
       - name: Upload SARIF to GitHub Code Scanning
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
           sarif_file: psalm.sarif
           category: psalm
+
+      - name: Fail on Psalm findings
+        run: |
+          errors=$(jq '[.runs[].results[] | select(.level == "error")] | length' psalm.sarif)
+          echo "Psalm error-level findings: $errors"
+          if [ "$errors" -gt 0 ]; then
+            echo "::error::Psalm reported $errors error-level finding(s). See the inline annotations on the Files changed tab (maintainers: Security > Code scanning)."
+            exit 1
+          fi
