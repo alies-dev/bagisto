@@ -33,10 +33,20 @@ jobs:
     name: Psalm static analysis (types + taint)
     runs-on: ubuntu-latest
     steps:
-      - name: Audit outbound calls
+      - name: Harden the runner (block unexpected egress)
         uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
-          egress-policy: audit
+          # Derived from the egress-policy: audit run. Update when the toolchain
+          # gains a new outbound call (the audit run lists what was reached).
+          egress-policy: block
+          allowed-endpoints: >
+            api.github.com:443
+            codeload.github.com:443
+            github.com:443
+            packagist.org:443
+            release-assets.githubusercontent.com:443
+            repo.packagist.org:443
+            results-receiver.actions.githubusercontent.com:443
 
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
