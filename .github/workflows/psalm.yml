@@ -30,14 +30,12 @@ jobs:
       # Psalm 7 runs type inference and taint (security) analysis in a single
       # pass. One invocation emits inline annotations and a SARIF report.
       - name: Run Psalm
-        run: >-
-          ./vendor/bin/psalm
-          --taint-analysis
-          --output-format=github
-          --report=psalm.sarif
-          --no-progress
-          --no-cache
-          --threads=2
+        run: |
+          set +e
+          ./vendor/bin/psalm --taint-analysis --output-format=github --report=psalm.sarif --no-progress --no-cache --threads=2
+          code=$?
+          echo "PSALM_EXIT=$code"
+          exit $code
 
       - name: Upload SARIF to GitHub Code Scanning
         uses: github/codeql-action/upload-sarif@v3
