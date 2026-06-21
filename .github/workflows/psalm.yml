@@ -1,0 +1,49 @@
+name: Psalm
+
+on:
+  push:
+    # Build the baseline Code Scanning diffs PRs against, on maintained branches.
+    branches:
+      - master
+      - '2.*'
+      - '1.x'
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: psalm-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  psalm:
+    name: Psalm static analysis (types + taint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      # Type + taint analysis in one pass. In Actions, Psalm auto-selects the
+      # github output format and exits 0 even on findings when writing a report
+      # (vimeo/psalm@6e39c24), so results are gated via Code Scanning below.
+      - name: Run Psalm
+        run: ./vendor/bin/psalm --taint-analysis --report=psalm.sarif
+
+      # No `if: always()`: a crashed run fails the step above and skips this
+      # upload, so a partial or missing SARIF never resolves existing alerts.
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: psalm.sarif
+          category: psalm
